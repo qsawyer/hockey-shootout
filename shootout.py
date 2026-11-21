@@ -131,3 +131,107 @@ def winner(score):
     if not is_game_over(score):
         return None
     return PLAYER if score.player_goals > score.computer_goals else COMPUTER
+
+
+# ---------------------------------------------------------------------------
+# Input and printing. Everything below takes input_fn / output_fn / rng so
+# tests can script the player, capture output, and control the computer.
+# ---------------------------------------------------------------------------
+
+def format_status(score, round_number):
+    """R6: one line with the round and the score."""
+    if is_sudden_death(round_number):
+        label = f"Round {round_number} (sudden death)"
+    else:
+        label = f"Round {round_number} of {REGULATION_ROUNDS}"
+    return f"{label} | You {score.player_goals} - {score.computer_goals} Computer"
+
+
+def ask_choice(prompt, labels, input_fn, output_fn):
+    """Show a numbered menu and return the chosen index. Accepts a number or a label."""
+    output_fn(prompt)
+    for number, label in enumerate(labels, start=1):
+        output_fn(f"  {number}. {label}")
+    while True:
+        answer = input_fn(f"Choose 1-{len(labels)}: ").strip().lower()
+        if answer.isdigit() and 1 <= int(answer) <= len(labels):
+            return int(answer) - 1
+        for index, label in enumerate(labels):
+            if answer == label.lower():
+                return index
+        output_fn(f"Please enter a number from 1 to {len(labels)}.")
+
+
+def play_shot(score, input_fn, output_fn, rng):
+    """Play the next shot (player's or computer's) and return the new score."""
+    shooter = next_shooter(score)
+    round_number = current_round(score)
+    output_fn("")
+    output_fn(format_status(score, round_number))                       # R6 before
+
+    if shooter == PLAYER:
+        index = ask_choice("Your shot. Where do you shoot?",            # R1
+                           [sp.name for sp in SHOT_SPOTS], input_fn, output_fn)
+        spot = SHOT_SPOTS[index]
+        cover = computer_coverage(rng)                                  # R2
+        shot_line = f"You shoot {spot.name}. The goalie covers {cover.description}."
+    else:
+        index = ask_choice("You're in goal. Which two thirds do you cover?",  # R2
+                           [c.description for c in COVERAGES], input_fn, output_fn)
+        cover = COVERAGES[index]
+        spot = computer_shot(rng)                                       # R1
+        shot_line = f"Computer shoots {spot.name}. You cover {cover.description}."
+
+    result = shot_result(spot, cover)                                   # R3
+    score = record_shot(score, shooter, result)
+    output_fn(shot_line)
+    output_fn("GOAL!" if result == GOAL else "SAVE!")                   # R7
+    output_fn(format_status(score, round_number))                       # R6 after
+    return score
+
+
+def play_game(input_fn, output_fn, rng):
+    """Play one full shootout and return the winner (PLAYER or COMPUTER)."""
+    score = Score()
+    announced_sudden_death = False
+    while not is_game_over(score):
+        if is_sudden_death(current_round(score)) and not announced_sudden_death:
+            output_fn("")
+            output_fn("Tied after 5 rounds - SUDDEN DEATH!")             # R5
+            announced_sudden_death = True
+        score = play_shot(score, input_fn, output_fn, rng)
+    result = winner(score)
+    output_fn("")
+    output_fn(f"Final score: You {score.player_goals} - {score.computer_goals} Computer")
+    output_fn("You win!" if result == PLAYER else "Computer wins!")    # R8
+    return result
+
+
+def ask_play_again(input_fn, output_fn):
+    """R9: ask until the answer is yes or no."""
+    while True:
+        answer = input_fn("Play again? (y/n): ").strip().lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        output_fn("Please answer y or n.")
+
+
+def main(input_fn=input, output_fn=print, rng=None):
+    if rng is None:
+        import random
+        rng = random.Random()
+    output_fn("HOCKEY SHOOTOUT - 5 shots each, sudden death if tied.")
+    try:
+        while True:
+            play_game(input_fn, output_fn, rng)
+            if not ask_play_again(input_fn, output_fn):              # R9
+                break
+    except (EOFError, KeyboardInterrupt):
+        output_fn("")
+    output_fn("Thanks for playing!")
+
+
+if __name__ == "__main__":
+    main()
